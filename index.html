@@ -9,6 +9,7 @@
     #result { font-size: 24px; margin-top: 20px; color: #333; }
     button { padding: 10px 20px; font-size: 18px; cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 5px; }
     button:hover { background-color: #45a049; }
+    button:disabled { background-color: #cccccc; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -23,16 +24,26 @@
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const resultDiv = document.getElementById('result');
+    const playButton = document.querySelector('button'); // 获取按钮元素
+    let videoStream = null; // 用于存储视频流
 
     // 获取摄像头权限
     navigator.mediaDevices.getUserMedia({ video: true })
       .then(stream => {
+        videoStream = stream; // 保存流的引用
         video.srcObject = stream;
       })
       .catch(err => {
         console.error('摄像头错误:', err);
         resultDiv.textContent = '无法访问摄像头';
       });
+
+    // 页面关闭时停止视频流
+    window.addEventListener('beforeunload', () => {
+      if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+      }
+    });
 
     // 调整图像大小、压缩并编码
     async function resizeAndEncode(canvas, maxWidth, maxHeight, quality) {
@@ -76,15 +87,16 @@
     // 捕获图像并发送到Worker
     async function playGame() {
       resultDiv.textContent = '正在识别...';
-
-      // 调用新的辅助函数来处理图像
-      // 与 python 脚本对齐: 最大尺寸512, 质量85%
-      const imageData = await resizeAndEncode(canvas, 512, 512, 0.85);
-      
-      // 从imageData中移除头部，只发送base64部分
-      const base64Image = imageData.split(',')[1];
+      playButton.disabled = true; // 禁用按钮
 
       try {
+        // 调用新的辅助函数来处理图像
+        // 与 python 脚本对齐: 最大尺寸512, 质量85%
+        const imageData = await resizeAndEncode(canvas, 512, 512, 0.85);
+        
+        // 从imageData中移除头部，只发送base64部分
+        const base64Image = imageData.split(',')[1];
+
         const response = await fetch('https://rpsbackend.lucyfer81.workers.dev/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -102,6 +114,8 @@
       } catch (err) {
         console.error('请求错误:', err);
         resultDiv.textContent = '请求失败，请重试';
+      } finally {
+        playButton.disabled = false; // 无论成功或失败，最后都重新启用按钮
       }
     }
   </script>
