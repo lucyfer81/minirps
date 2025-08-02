@@ -15,7 +15,7 @@ async function timeFunction(promiseFn) {
 async function routeRequest(request) {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-control-allow-methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
 
@@ -111,16 +111,15 @@ async function recognizeGesture(imageBase64) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'Pro/Qwen/Qwen2.5-VL-7B-Instruct',
+      model: 'THUDM/GLM-4.1V-9B-Thinking',
       messages: [{
         role: 'user',
         content: [
-          { type: 'text', text: '图中是石头、剪刀、布中的哪一个？请只回答：石头或剪刀或布' },
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } }
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } },
+          { type: 'text', text: '请识别图片中的手势是石头、剪刀还是布？' }
         ]
       }],
-      max_tokens: 10,
-      temperature: 0
+      max_tokens: 50
     })
   });
 
