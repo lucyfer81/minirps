@@ -116,7 +116,7 @@ async function recognizeGesture(imageBase64) {
         role: 'user',
         content: [
           { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } },
-          { type: 'text', text: '请识别图片中的手势是石头、剪刀还是布？' }
+          { type: 'text', text: '你在玩石头剪刀布的游戏。忽略途中的背景，识别图片中的手势是石头、剪刀还是布？' }
         ]
       }],
       max_tokens: 50
