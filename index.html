@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>石头剪刀布游戏</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; }
+    video, canvas { border: 2px solid #333; margin: 10px; border-radius: 8px; }
+    #result { font-size: 24px; margin-top: 20px; color: #333; }
+    button { padding: 10px 20px; font-size: 18px; cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 5px; }
+    button:hover { background-color: #45a049; }
+  </style>
+</head>
+<body>
+  <h1>石头剪刀布</h1>
+  <video id="video" width="320" height="240" autoplay></video>
+  <canvas id="canvas" width="320" height="240" style="display: none;"></canvas>
+  <button onclick="playGame()">出拳</button>
+  <div id="result">等待出拳...</div>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const resultDiv = document.getElementById('result');
+
+    // 获取摄像头权限
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        video.srcObject = stream;
+      })
+      .catch(err => {
+        console.error('摄像头错误:', err);
+        resultDiv.textContent = '无法访问摄像头';
+      });
+
+    // 调整图像大小、压缩并编码
+    async function resizeAndEncode(canvas, maxWidth, maxHeight, quality) {
+      const video = document.getElementById('video');
+      const ctx = canvas.getContext('2d');
+      
+      // 1. 先将视频帧绘制到原始大小的画布上
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // 2. 计算缩放后的尺寸
+      let width = canvas.width;
+      let height = canvas.height;
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height = Math.round(height * (maxWidth / width));
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width = Math.round(width * (maxHeight / height));
+          height = maxHeight;
+        }
+      }
+
+      // 3. 创建一个临时的、用于缩放的画布
+      const resizeCanvas = document.createElement('canvas');
+      resizeCanvas.width = width;
+      resizeCanvas.height = height;
+      const resizeCtx = resizeCanvas.getContext('2d');
+
+      // 4. 将原始图像缩放到新画布上
+      resizeCtx.drawImage(canvas, 0, 0, width, height);
+
+      // 5. 从缩放后的画布导出高质量的JPEG图像
+      return resizeCanvas.toDataURL('image/jpeg', quality);
+    }
+
+    // 捕获图像并发送到Worker
+    async function playGame() {
+      resultDiv.textContent = '正在识别...';
+
+      // 调用新的辅助函数来处理图像
+      // 与 python 脚本对齐: 最大尺寸512, 质量85%
+      const imageData = await resizeAndEncode(canvas, 512, 512, 0.85);
+      
+      // 从imageData中移除头部，只发送base64部分
+      const base64Image = imageData.split(',')[1];
+
+      try {
+        const response = await fetch('https://rpsbackend.lucyfer81.workers.dev/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // worker.js 期望的格式是 { image: "base64..." }
+          body: JSON.stringify({ image: base64Image })
+        });
+        
+        const data = await response.json();
+
+        if (response.status !== 200 || data.error) {
+          resultDiv.textContent = `错误: ${data.error || '未知错误'}`;
+        } else {
+          resultDiv.textContent = `你出: ${data.userGesture}, AI出: ${data.aiGesture}, 结果: ${data.result}`;
+        }
+      } catch (err) {
+        console.error('请求错误:', err);
+        resultDiv.textContent = '请求失败，请重试';
+      }
+    }
+  </script>
+</body>
+</html>
