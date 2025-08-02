@@ -2,121 +2,341 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>石头剪刀布游戏</title>
+  <title>石头剪刀布游戏 (五局三胜)</title>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; }
-    video, canvas { border: 2px solid #333; margin: 10px; border-radius: 8px; }
-    #result { font-size: 24px; margin-top: 20px; color: #333; }
-    button { padding: 10px 20px; font-size: 18px; cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 5px; }
-    button:hover { background-color: #45a049; }
-    button:disabled { background-color: #cccccc; cursor: not-allowed; }
+    body { font-family: Arial, sans-serif; background-color: #f0f0f0; margin: 0; padding: 20px; }
+    h1 { text-align: center; color: #333; }
+    
+    #game-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background-color: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      display: flex;
+      gap: 30px;
+    }
+
+    #left-panel {
+      flex: 3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #right-panel {
+      flex: 2;
+      border-left: 2px solid #f0f0f0;
+      padding-left: 30px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    video { border: 2px solid #333; border-radius: 8px; max-width: 100%; height: auto;}
+    canvas { display: none; }
+
+    #controls button { padding: 12px 25px; font-size: 18px; cursor: pointer; color: white; border: none; border-radius: 5px; margin: 5px; transition: background-color 0.3s; }
+    #playButton { background-color: #4CAF50; }
+    #playButton:hover { background-color: #45a049; }
+    #playButton:disabled { background-color: #cccccc; cursor: not-allowed; }
+    #resetButton { background-color: #f44336; display: none; }
+    #resetButton:hover { background-color: #da190b; }
+
+    #status { font-size: 20px; margin-top: 15px; color: #555; min-height: 30px; }
+    #scoreboard { font-size: 28px; font-weight: bold; margin: 15px 0; color: #2c3e50; }
+    
+    #history h2 { text-align: center; margin-bottom: 15px; }
+    .history-log { 
+      display: flex; 
+      flex-direction: column; 
+      gap: 15px; 
+      width: 100%;
+    }
+    .history-item { 
+      background-color: #f9f9f9; 
+      border: 1px solid #ddd; 
+      border-radius: 8px; 
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      width: 95%;
+    }
+    .history-item .player-info { text-align: center; }
+    .history-item p { margin: 5px 0; font-size: 14px; font-weight: bold; }
+    .history-item .result { font-size: 24px; margin: 0 15px; }
+    .history-item img { width: 80px; height: 60px; border-radius: 5px; object-fit: cover; border: 1px solid #ccc; }
+    .history-item .timing { font-size: 11px; color: #888; margin-top: 4px; }
+
+    #match-result { font-size: 22px; font-weight: bold; margin-top: 20px; color: #e67e22; min-height: 35px; text-align: center; }
+    #avg-timing { font-size: 16px; color: #555; margin-top: 10px; text-align: center; }
   </style>
 </head>
 <body>
-  <h1>石头剪刀布</h1>
-  <video id="video" width="320" height="240" autoplay></video>
-  <canvas id="canvas" width="320" height="240" style="display: none;"></canvas>
-  <button onclick="playGame()">出拳</button>
-  <div id="result">等待出拳...</div>
+  <h1>石头剪刀布 - 五局三胜</h1>
+  <div id="game-container">
+    <!-- Left Panel -->
+    <div id="left-panel">
+      <video id="video" width="480" height="360" autoplay muted></video>
+      <canvas id="canvas" width="480" height="360"></canvas>
+      <div id="scoreboard">你 0 - 0 AI</div>
+      <div id="status">请允许摄像头访问权限...</div>
+      <div id="match-result"></div>
+      <div id="avg-timing"></div>
+      <div id="controls">
+        <button id="playButton" onclick="playGame()" disabled>出拳</button>
+        <button id="resetButton" onclick="resetMatch()">再玩一局</button>
+      </div>
+    </div>
+
+    <!-- Right Panel -->
+    <div id="right-panel">
+      <div id="history">
+        <h2>最近对局</h2>
+        <div class="history-log" id="historyLog"></div>
+      </div>
+    </div>
+  </div>
 
   <script>
+    // DOM 元素
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const resultDiv = document.getElementById('result');
-    const playButton = document.querySelector('button'); // 获取按钮元素
-    let videoStream = null; // 用于存储视频流
+    const statusDiv = document.getElementById('status');
+    const playButton = document.getElementById('playButton');
+    const resetButton = document.getElementById('resetButton');
+    const scoreboardDiv = document.getElementById('scoreboard');
+    const historyLogDiv = document.getElementById('historyLog');
+    const matchResultDiv = document.getElementById('match-result');
+    const avgTimingDiv = document.getElementById('avg-timing');
 
-    // 获取摄像头权限
-    navigator.mediaDevices.getUserMedia({ video: true })
-      .then(stream => {
-        videoStream = stream; // 保存流的引用
-        video.srcObject = stream;
-      })
-      .catch(err => {
-        console.error('摄像头错误:', err);
-        resultDiv.textContent = '无法访问摄像头';
-      });
+    // 游戏状态变量
+    let videoStream = null;
+    let playerMatchScore = 0;
+    let aiMatchScore = 0;
+    let roundCount = 0;
+    const maxRounds = 5;
+    const winScore = 3;
+    let userGestureTimes = [];
+    let aiGestureTimes = [];
 
-    // 页面关闭时停止视频流
+    // AI 出拳图片 (可替换为本地路径)
+    const aiGestureImages = {
+      '石头': 'https://user-images.githubusercontent.com/11156953/205533033-6e32c0b5-3748-475c-8263-9e9c3a7e5181.png',
+      '剪刀': 'https://user-images.githubusercontent.com/11156953/205533036-12d1a01b-6c74-4d6a-86e6-353ab1d63549.png',
+      '布': 'https://user-images.githubusercontent.com/11156953/205533035-a35f32e1-4e80-4063-8663-4f9d6425191c.png'
+    };
+
+    // 初始化
+    window.addEventListener('load', () => {
+      setupUser();
+      setupCamera();
+    });
+
     window.addEventListener('beforeunload', () => {
       if (videoStream) {
         videoStream.getTracks().forEach(track => track.stop());
       }
     });
 
-    // 调整图像大小、压缩并编码
-    async function resizeAndEncode(canvas, maxWidth, maxHeight, quality) {
-      const video = document.getElementById('video');
-      const ctx = canvas.getContext('2d');
-      
-      // 1. 先将视频帧绘制到原始大小的画布上
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      // 2. 计算缩放后的尺寸
-      let width = canvas.width;
-      let height = canvas.height;
-
-      if (width > height) {
-        if (width > maxWidth) {
-          height = Math.round(height * (maxWidth / width));
-          width = maxWidth;
-        }
+    // 用户识别
+    function setupUser() {
+      let userId = localStorage.getItem('rpsUserId');
+      if (!userId) {
+        userId = 'user-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('rpsUserId', userId);
+        console.log('新用户ID已创建:', userId);
       } else {
-        if (height > maxHeight) {
-          width = Math.round(width * (maxHeight / height));
-          height = maxHeight;
-        }
+        console.log('欢迎回来, 用户ID:', userId);
       }
-
-      // 3. 创建一个临时的、用于缩放的画布
-      const resizeCanvas = document.createElement('canvas');
-      resizeCanvas.width = width;
-      resizeCanvas.height = height;
-      const resizeCtx = resizeCanvas.getContext('2d');
-
-      // 4. 将原始图像缩放到新画布上
-      resizeCtx.drawImage(canvas, 0, 0, width, height);
-
-      // 5. 从缩放后的画布导出高质量的JPEG图像
-      return resizeCanvas.toDataURL('image/jpeg', quality);
     }
 
-    // 捕获图像并发送到Worker
+    // 设置摄像头
+    function setupCamera() {
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+          videoStream = stream;
+          video.srcObject = stream;
+          video.onloadedmetadata = () => {
+            playButton.disabled = false;
+            statusDiv.textContent = '准备就绪，请出拳！';
+          };
+        })
+        .catch(err => {
+          console.error('摄像头错误:', err);
+          statusDiv.textContent = '无法访问摄像头，请检查权限。';
+          playButton.disabled = true;
+        });
+    }
+
+    // 调整图像大小、压缩并编码
+    async function resizeAndEncode(canvas, maxWidth, maxHeight, quality) {
+        const ctx = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        let width = canvas.width;
+        let height = canvas.height;
+
+        if (width > maxWidth || height > maxHeight) {
+            if (width / height > maxWidth / maxHeight) {
+                height = Math.round(height * (maxWidth / width));
+                width = maxWidth;
+            } else {
+                width = Math.round(width * (maxHeight / height));
+                height = maxHeight;
+            }
+        }
+
+        const resizeCanvas = document.createElement('canvas');
+        resizeCanvas.width = width;
+        resizeCanvas.height = height;
+        resizeCanvas.getContext('2d').drawImage(canvas, 0, 0, width, height);
+        return resizeCanvas.toDataURL('image/jpeg', quality);
+    }
+
+    // 核心游戏流程
     async function playGame() {
-      resultDiv.textContent = '正在识别...';
-      playButton.disabled = true; // 禁用按钮
+      if (isMatchOver()) {
+        statusDiv.textContent = '本轮比赛已结束。';
+        return;
+      }
+
+      statusDiv.textContent = '正在识别...';
+      playButton.disabled = true;
 
       try {
-        // 调用新的辅助函数来处理图像
-        // 与 python 脚本对齐: 最大尺寸512, 质量85%
         const imageData = await resizeAndEncode(canvas, 512, 512, 0.85);
-        
-        // 从imageData中移除头部，只发送base64部分
         const base64Image = imageData.split(',')[1];
 
         const response = await fetch('https://rpsbackend.lucyfer81.workers.dev/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          // worker.js 期望的格式是 { image: "base64..." }
           body: JSON.stringify({ image: base64Image })
         });
         
         const data = await response.json();
 
         if (response.status !== 200 || data.error) {
-          resultDiv.textContent = `错误: ${data.error || '未知错误'}`;
-        } else {
-          resultDiv.textContent = `你出: ${data.userGesture}, AI出: ${data.aiGesture}, 结果: ${data.result}`;
+          statusDiv.textContent = `错误: ${data.error || '未知错误'}`;
+          playButton.disabled = false;
+          return;
         }
+        
+        roundCount++;
+        updateScore(data.result);
+        
+        userGestureTimes.push(data.userGestureTime);
+        aiGestureTimes.push(data.aiGestureTime);
+
+        updateHistory(imageData, data);
+        checkMatchWinner();
+
       } catch (err) {
         console.error('请求错误:', err);
-        resultDiv.textContent = '请求失败，请重试';
+        statusDiv.textContent = '请求失败，请重试';
       } finally {
-        playButton.disabled = false; // 无论成功或失败，最后都重新启用按钮
+        if (!isMatchOver()) {
+          playButton.disabled = false;
+        }
       }
+    }
+
+    // 更新分数
+    function updateScore(result) {
+      if (result === '你赢了') {
+        playerMatchScore++;
+      } else if (result === 'AI赢了') {
+        aiMatchScore++;
+      }
+      scoreboardDiv.textContent = `你 ${playerMatchScore} - ${aiMatchScore} AI`;
+    }
+
+    // 更新历史记录
+    function updateHistory(userImgData, data) {
+      const { userGesture, aiGesture, result, userGestureTime, aiGestureTime } = data;
+      const historyItem = document.createElement('div');
+      historyItem.className = 'history-item';
+
+      const resultText = result === '平局' ? '🤝' : (result === '你赢了' ? '🏆' : '🤖');
+
+      historyItem.innerHTML = `
+        <div class="player-info">
+          <p>你 (${userGesture})</p>
+          <img src="${userImgData}" alt="你的出拳">
+          <div class="timing">识别: ${userGestureTime}ms</div>
+        </div>
+        <div class="result">${resultText}</div>
+        <div class="player-info">
+          <p>AI (${aiGesture})</p>
+          <img src="${aiGestureImages[aiGesture]}" alt="AI的出拳">
+          <div class="timing">AI: ${aiGestureTime}ms</div>
+        </div>
+      `;
+      
+      if (historyLogDiv.children.length >= maxRounds) {
+        historyLogDiv.removeChild(historyLogDiv.firstChild);
+      }
+      historyLogDiv.insertBefore(historyItem, historyLogDiv.firstChild);
+    }
+    
+    function isMatchOver() {
+        return roundCount >= maxRounds || playerMatchScore >= winScore || aiMatchScore >= winScore;
+    }
+
+    // 检查并宣布最终胜利者
+    function checkMatchWinner() {
+      if (isMatchOver()) {
+        let finalMessage = '';
+        if (playerMatchScore > aiMatchScore) {
+          finalMessage = '🎉 恭喜你，获得了最终的胜利！ 🎉';
+          matchResultDiv.style.color = '#2ecc71';
+        } else if (aiMatchScore > playerMatchScore) {
+          finalMessage = '🤖 很遗憾，AI赢得了本场比赛。 🤖';
+          matchResultDiv.style.color = '#e74c3c';
+        } else {
+          finalMessage = '🤝 势均力敌，本场比赛平局！ 🤝';
+          matchResultDiv.style.color = '#f39c12';
+        }
+        matchResultDiv.textContent = finalMessage;
+        calculateAndShowAverageTimes();
+        statusDiv.textContent = '比赛结束！';
+        playButton.style.display = 'none';
+        resetButton.style.display = 'inline-block';
+        playButton.disabled = true;
+      } else {
+        statusDiv.textContent = `第 ${roundCount + 1} 局，请出拳！`;
+      }
+    }
+
+    // 计算并显示平均时间
+    function calculateAndShowAverageTimes() {
+        if(userGestureTimes.length === 0) return;
+        const avgUserTime = userGestureTimes.reduce((a, b) => a + b, 0) / userGestureTimes.length;
+        const avgAiTime = aiGestureTimes.reduce((a, b) => a + b, 0) / aiGestureTimes.length;
+        avgTimingDiv.textContent = `平均识别耗时: ${Math.round(avgUserTime)}ms | 平均AI出拳耗时: ${Math.round(avgAiTime)}ms`;
+    }
+
+    // 重置比赛
+    function resetMatch() {
+      playerMatchScore = 0;
+      aiMatchScore = 0;
+      roundCount = 0;
+      userGestureTimes = [];
+      aiGestureTimes = [];
+      
+      scoreboardDiv.textContent = '你 0 - 0 AI';
+      historyLogDiv.innerHTML = '';
+      matchResultDiv.textContent = '';
+      avgTimingDiv.textContent = '';
+      statusDiv.textContent = '新比赛开始，请出拳！';
+      
+      playButton.style.display = 'inline-block';
+      resetButton.style.display = 'none';
+      playButton.disabled = false;
     }
   </script>
 </body>

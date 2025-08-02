@@ -3,6 +3,14 @@ addEventListener('fetch', event => {
   event.respondWith(routeRequest(event.request));
 });
 
+// 辅助函数，用于包装和计时异步操作
+async function timeFunction(promiseFn) {
+  const startTime = performance.now();
+  const result = await promiseFn();
+  const endTime = performance.now();
+  return { result, duration: Math.round(endTime - startTime) };
+}
+
 // routeRequest 和 handleRequest 不再需要 env 参数
 async function routeRequest(request) {
   const corsHeaders = {
@@ -46,12 +54,17 @@ async function handleRequest(request) {
       });
     }
 
-    // 并行执行API调用
-    const userGesturePromise = recognizeGesture(image);
-    const aiGesturePromise = generateAIGesture();
+    // 并行执行带计时的API调用
+    const userGesturePromise = timeFunction(() => recognizeGesture(image));
+    const aiGesturePromise = timeFunction(generateAIGesture);
 
     // 等待两个请求都完成
-    const [userGesture, aiGesture] = await Promise.all([userGesturePromise, aiGesturePromise]);
+    const [userResult, aiResult] = await Promise.all([userGesturePromise, aiGesturePromise]);
+
+    const userGesture = userResult.result;
+    const userGestureTime = userResult.duration;
+    const aiGesture = aiResult.result;
+    const aiGestureTime = aiResult.duration;
 
     // 检查模型是否成功返回了有效手势
     if (!['石头', '剪刀', '布'].includes(userGesture)) {
@@ -72,7 +85,9 @@ async function handleRequest(request) {
     return new Response(JSON.stringify({
       userGesture,
       aiGesture,
-      result
+      result,
+      userGestureTime, // 新增：用户手势识别耗时
+      aiGestureTime   // 新增：AI出拳耗时
     }), {
       headers: { 'Content-Type': 'application/json' },
       status: 200
@@ -138,7 +153,7 @@ async function generateAIGesture() {
       model: 'Qwen/Qwen3-8B', // 更新模型名称
       messages: [
         { "role": "system", "content": "你是一个正在玩石头剪刀布游戏的助手。" },
-        { "role": "user", "content": "你正在玩一个石头剪刀布的游戏。你的任务是从'rock'、'paper'或'scissors'中选择一个。你必须只用一个词来回答，不能有任何其他的文字、解释或标点符号。" }
+        { "role": "user", "content": "你正在玩一个石头剪刀布的游戏。你的任务是从'rock'、'paper'或'scissors'中选择一个。你必须只用一个词来回答，不能有任何其他的文字、解释或标点符号。不要思考，快速给出你的答案" }
       ],
       max_tokens: 10, // 限制输出长度
       temperature: 1.0 // 增加随机性
@@ -196,3 +211,4 @@ function determineWinner(user, ai) {
   ) return '你赢了';
   return 'AI赢了';
 }
+
